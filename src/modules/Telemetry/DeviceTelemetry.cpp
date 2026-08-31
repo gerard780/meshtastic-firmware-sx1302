@@ -130,25 +130,23 @@ meshtastic_Telemetry DeviceTelemetryModule::getLocalStatsTelemetry()
     telemetry.variant.local_stats.air_util_tx = airTime->utilizationTXPercent();
     telemetry.variant.local_stats.num_online_nodes = numOnlineNodes;
     telemetry.variant.local_stats.num_total_nodes = nodeDB->getNumMeshNodes();
-    if (RadioLibInterface::instance) {
+    RadioInterface *radio = router ? router->getRadioIface() : nullptr;
+    if (radio) {
+        telemetry.variant.local_stats.num_packets_tx = radio->txGood;
+        telemetry.variant.local_stats.num_packets_rx = radio->rxGood + radio->rxBad;
+        telemetry.variant.local_stats.num_packets_rx_bad = radio->rxBad;
+        telemetry.variant.local_stats.num_tx_relay = radio->txRelay;
+        telemetry.variant.local_stats.num_tx_dropped = radio->txDrop;
+    }
+    // `radio &&` matters: with no interface installed both sides are null, and a bare equality
+    // would pass the guard and then dereference the null instance.
+    if (radio && RadioLibInterface::instance == radio) {
         RadioLibInterface::instance->updateNoiseFloor();
         telemetry.variant.local_stats.noise_floor = RadioLibInterface::instance->getAverageNoiseFloor();
-        telemetry.variant.local_stats.num_packets_tx = RadioLibInterface::instance->txGood;
-        telemetry.variant.local_stats.num_packets_rx = RadioLibInterface::instance->rxGood + RadioLibInterface::instance->rxBad;
-        telemetry.variant.local_stats.num_packets_rx_bad = RadioLibInterface::instance->rxBad;
-        telemetry.variant.local_stats.num_tx_relay = RadioLibInterface::instance->txRelay;
-        telemetry.variant.local_stats.num_tx_dropped = RadioLibInterface::instance->txDrop;
     }
 #ifdef ARCH_PORTDUINO
-    if (SimRadio::instance) {
-        if (!RadioLibInterface::instance)
-            telemetry.variant.local_stats.noise_floor = SimRadio::instance->getCurrentRSSI();
-        telemetry.variant.local_stats.num_packets_tx = SimRadio::instance->txGood;
-        telemetry.variant.local_stats.num_packets_rx = SimRadio::instance->rxGood + SimRadio::instance->rxBad;
-        telemetry.variant.local_stats.num_packets_rx_bad = SimRadio::instance->rxBad;
-        telemetry.variant.local_stats.num_tx_relay = SimRadio::instance->txRelay;
-        telemetry.variant.local_stats.num_tx_dropped = SimRadio::instance->txDrop;
-    }
+    else if (radio && SimRadio::instance == radio)
+        telemetry.variant.local_stats.noise_floor = SimRadio::instance->getCurrentRSSI();
 #else
     telemetry.variant.local_stats.heap_total_bytes = memGet.getHeapSize();
     telemetry.variant.local_stats.heap_free_bytes = memGet.getFreeHeap();

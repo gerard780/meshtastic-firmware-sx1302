@@ -23,10 +23,10 @@ SX1302Interface::SX1302Interface() : OSThread("SX1302", POLL_INTERVAL_MSEC) {}
 
 SX1302Interface::~SX1302Interface()
 {
-    sleep();
     while (!txQueue.empty()) {
         releaseQueuedPacket(txQueue.dequeue());
     }
+    sleep();
     unloadHal();
 }
 
@@ -122,6 +122,31 @@ void SX1302Interface::applyPowerLimit()
         LOG_WARN("Clamp SX1302_MAX_POWER %d to the supported 0-27 dBm range", configuredMax);
     }
     limitPower(static_cast<int8_t>(safeMax));
+
+    const int8_t minimumPower = minimumTxPower();
+    if (safeMax < minimumPower) {
+        LOG_ERROR("SX1302_MAX_POWER %d dBm is below the calibrated LUT minimum %d dBm; disable transmit", safeMax, minimumPower);
+        disabled = true;
+        txDisabledForPower = true;
+        return;
+    }
+    // The LUT floor moves with the band, so the ceiling that was impossible on one region can be
+    // fine on the next. Undo only our own latch - disable() is a separate, deliberate one.
+    if (txDisabledForPower) {
+        LOG_INFO("SX1302_MAX_POWER %d dBm now clears the calibrated LUT minimum %d dBm; re-enable transmit", safeMax,
+                 minimumPower);
+        disabled = false;
+        txDisabledForPower = false;
+    }
+    if (power < minimumPower) {
+        LOG_WARN("Clamp SX1302 Tx power %d to calibrated LUT minimum %d dBm", power, minimumPower);
+        power = minimumPower;
+    }
+}
+
+int8_t SX1302Interface::minimumTxPower() const
+{
+    return savedFreq < 700.0f ? -6 : 12;
 }
 
 void SX1302Interface::resetConcentrator()
@@ -141,11 +166,6 @@ void SX1302Interface::resetConcentrator()
 
 bool SX1302Interface::configureHardware()
 {
-    uint8_t halBandwidth = 0;
-    if (!validateRadioConfig(halBandwidth)) {
-        return false;
-    }
-
     if (started) {
         if (sendingPacket) {
             hal.abortTx(0);
@@ -153,6 +173,11 @@ bool SX1302Interface::configureHardware()
         }
         hal.stop();
         started = false;
+    }
+
+    uint8_t configuredBandwidth = 0;
+    if (!validateRadioConfig(configuredBandwidth)) {
+        return false;
     }
 
     resetConcentrator();
@@ -200,7 +225,7 @@ bool SX1302Interface::configureHardware()
     serviceIf.enable = true;
     serviceIf.rf_chain = 0;
     serviceIf.freq_hz = 0;
-    serviceIf.bandwidth = halBandwidth;
+    serviceIf.bandwidth = configuredBandwidth;
     serviceIf.datarate = sf;
     serviceIf.implicit_hdr = false;
     if (hal.ifChainSetConfig(8, &serviceIf) != SUCCESS) {
@@ -269,6 +294,7 @@ bool SX1302Interface::configureHardware()
         return false;
     }
 
+    halBandwidth = configuredBandwidth;
     nextTxAt = 0;
     LOG_INFO("SX1302 started at %.3f MHz, BW %d kHz, SF%u, CR 4/%u, power %d dBm", savedFreq, lroundf(bw), sf, cr, power);
     LOG_INFO("SX1302 HAL has no packet-in-progress CAD API; using Meshtastic randomized transmit scheduling");
@@ -439,7 +465,7 @@ bool SX1302Interface::startSend(meshtastic_MeshPacket *packet)
     tx.rf_chain = 0;
     tx.rf_power = power;
     tx.modulation = MOD_LORA;
-    tx.bandwidth = lroundf(bw) == 125 ? BW_125KHZ : (lroundf(bw) == 250 ? BW_250KHZ : BW_500KHZ);
+    tx.bandwidth = halBandwidth;
     tx.datarate = sf;
     tx.coderate = cr - 4;
     tx.invert_pol = false;
@@ -588,8 +614,19 @@ void SX1302Interface::pollReceive()
             LOG_WARN("lgw_receive failed; will keep polling");
             lastReceiveErrorAt = now;
         }
+        // Recovery tears the interface down and re-runs initLoRa(), which for this driver exits the
+        // process if it fails. A single failed SPI read must not be worth that, so only ask for it
+        // once the concentrator has been failing without interruption for RECOVERY_AFTER_MSEC.
+        static constexpr uint32_t RECOVERY_AFTER_MSEC = 5000;
+        if (++consecutiveReceiveErrors == 1) {
+            firstReceiveErrorAt = now;
+        } else if (!portduino_status.LoRa_in_error && Throttle::hasElapsed(firstReceiveErrorAt, RECOVERY_AFTER_MSEC)) {
+            LOG_ERROR("lgw_receive has failed for %ums; request LoRa recovery", now - firstReceiveErrorAt);
+            portduino_status.LoRa_in_error = true;
+        }
         return;
     }
+    consecutiveReceiveErrors = 0;
     for (int i = 0; i < count; ++i) {
         handleReceivedPacket(packets[i]);
     }

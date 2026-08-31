@@ -10,6 +10,3 @@ Lora:
   Reset: 25
   SX1302_MAX_POWER: 27
   SX1302_TX_GAIN_PROFILE: rak
-
-General:
-  APIPort: 4403

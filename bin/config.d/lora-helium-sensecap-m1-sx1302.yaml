@@ -12,6 +12,3 @@ Lora:
     - 18
   SX1302_MAX_POWER: 26
   SX1302_TX_GAIN_PROFILE: semtech
-
-General:
-  APIPort: 4403

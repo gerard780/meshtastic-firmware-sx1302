@@ -198,12 +198,6 @@ class RadioLibInterface : public RadioInterface, protected concurrency::Notified
     /// Set by a driver's startReceive() when it gives up and leaves RX off; cleared once RX is armed again.
     bool rxOffline = false;
 
-    /**
-     * Debugging counts
-     */
-    uint32_t rxBad = 0, rxGood = 0, txGood = 0, txRelay = 0;
-    uint16_t txDrop = 0;
-
   public:
     RadioLibInterface(LockingArduinoHal *hal, RADIOLIB_PIN_TYPE cs, RADIOLIB_PIN_TYPE irq, RADIOLIB_PIN_TYPE rst,
                       RADIOLIB_PIN_TYPE busy, PhysicalLayer *iface = NULL);

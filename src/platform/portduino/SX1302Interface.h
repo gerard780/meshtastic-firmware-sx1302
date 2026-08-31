@@ -9,6 +9,8 @@
 
 class SX1302Interface : public RadioInterface, protected concurrency::OSThread
 {
+    friend class SX1302InterfaceTest;
+
   public:
     SX1302Interface();
     ~SX1302Interface() override;
@@ -26,12 +28,6 @@ class SX1302Interface : public RadioInterface, protected concurrency::OSThread
     bool removePendingTXPacket(NodeNum from, PacketId id, uint32_t hop_limit_lt) override;
 
     uint32_t getPacketTime(uint32_t totalPacketLen, bool received = false) override;
-
-    uint32_t rxBad = 0;
-    uint32_t rxGood = 0;
-    uint32_t txGood = 0;
-    uint32_t txRelay = 0;
-    uint16_t txDrop = 0;
 
   protected:
     int32_t runOnce() override;
@@ -63,11 +59,17 @@ class SX1302Interface : public RadioInterface, protected concurrency::OSThread
     uint32_t txStartedAt = 0;
     uint32_t txTimeoutMsec = 0;
     uint32_t lastReceiveErrorAt = 0;
+    uint32_t firstReceiveErrorAt = 0;
+    uint32_t consecutiveReceiveErrors = 0;
+    uint8_t halBandwidth = sx1302hal::BW_125KHZ;
+    /// True while `disabled` is ours to clear, rather than a deliberate disable().
+    bool txDisabledForPower = false;
 
     bool loadHal();
     void unloadHal();
     bool configureHardware();
     bool validateRadioConfig(uint8_t &halBandwidth) const;
+    int8_t minimumTxPower() const;
     void applyPowerLimit();
     void resetConcentrator();
     void setTransmitDelay();

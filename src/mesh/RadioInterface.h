@@ -127,6 +127,12 @@ class RadioInterface
     void deliverToReceiver(meshtastic_MeshPacket *p);
 
   public:
+    uint32_t rxBad = 0;
+    uint32_t rxGood = 0;
+    uint32_t txGood = 0;
+    uint32_t txRelay = 0;
+    uint16_t txDrop = 0;
+
     /** pool is the pool we will alloc our rx packets from
      */
     RadioInterface();
