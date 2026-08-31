@@ -123,6 +123,7 @@ echo "a valid config for every radio module family is clean:"
 assert_clean_module module-rf95.yaml RF95
 assert_clean_module module-sx1262.yaml sx1262
 assert_clean_module module-sx1268.yaml sx1268
+assert_clean_module module-sx1302.yaml sx1302
 assert_clean_module module-llcc68.yaml LLCC68
 assert_clean_module module-sx1280.yaml sx1280
 assert_clean_module module-lr1110.yaml lr1110

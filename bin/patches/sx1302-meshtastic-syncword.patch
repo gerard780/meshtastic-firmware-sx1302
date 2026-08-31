@@ -1,0 +1,168 @@
+diff --git a/libloragw/src/loragw_hal.c b/libloragw/src/loragw_hal.c
+index ffc8ec0..27b50d2 100644
+--- a/libloragw/src/loragw_hal.c
++++ b/libloragw/src/loragw_hal.c
+@@ -1098,8 +1098,9 @@ int lgw_start(void) {
+             ts_addr = I2C_PORT_TEMP_SENSOR[i];
+             err = i2c_linuxdev_open(I2C_DEVICE, ts_addr, &ts_fd);
+             if (err != LGW_I2C_SUCCESS) {
+-                printf("ERROR: failed to open I2C for temperature sensor on port 0x%02X\n", ts_addr);
+-                return LGW_HAL_ERROR;
++                printf("WARNING: failed to open I2C for temperature sensor on port 0x%02X\n", ts_addr);
++                ts_fd = -1;
++                continue;
+             }
+
+             err = stts751_configure(ts_fd, ts_addr);
+@@ -1113,8 +1114,7 @@ int lgw_start(void) {
+             }
+         }
+         if (i == sizeof I2C_PORT_TEMP_SENSOR) {
+-            printf("ERROR: no temperature sensor found.\n");
+-            return LGW_HAL_ERROR;
++            printf("WARNING: no temperature sensor found; continuing without temperature telemetry.\n");
+         }
+
+         /* Configure ADC AD338R for full duplex (CN490 reference design) */
+@@ -1222,11 +1222,14 @@ int lgw_stop(void) {
+     }
+
+     if (CONTEXT_COM_TYPE == LGW_COM_SPI) {
+-        DEBUG_MSG("INFO: Closing I2C for temperature sensor\n");
+-        x = i2c_linuxdev_close(ts_fd);
+-        if (x != 0) {
+-            printf("ERROR: failed to close I2C temperature sensor device (err=%i)\n", x);
+-            err = LGW_HAL_ERROR;
++        if (ts_fd >= 0) {
++            DEBUG_MSG("INFO: Closing I2C for temperature sensor\n");
++            x = i2c_linuxdev_close(ts_fd);
++            if (x != 0) {
++                printf("ERROR: failed to close I2C temperature sensor device (err=%i)\n", x);
++                err = LGW_HAL_ERROR;
++            }
++            ts_fd = -1;
+         }
+
+         if (CONTEXT_BOARD.full_duplex == true) {
+@@ -1253,6 +1256,7 @@ int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
+     uint8_t nb_pkt_found = 0;
+     uint8_t nb_pkt_left = 0;
+     float current_temperature = 0.0, rssi_temperature_offset = 0.0;
++    bool temperature_valid = false;
+     /* performances variables */
+     struct timeval tm;
+
+@@ -1290,10 +1294,12 @@ int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
+     }
+
+     /* Apply RSSI temperature compensation */
+-    res = lgw_get_temperature(&current_temperature);
+-    if (res != LGW_I2C_SUCCESS) {
+-        printf("ERROR: failed to get current temperature\n");
+-        return LGW_HAL_ERROR;
++    if (ts_fd >= 0) {
++        res = lgw_get_temperature(&current_temperature);
++        temperature_valid = (res == LGW_I2C_SUCCESS);
++        if (temperature_valid == false) {
++            printf("WARNING: failed to get current temperature; skipping RSSI temperature compensation\n");
++        }
+     }
+
+     /* Iterate on the RX buffer to get parsed packets */
+@@ -1312,10 +1318,12 @@ int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
+         pkt_data[nb_pkt_found].rssic += CONTEXT_RF_CHAIN[pkt_data[nb_pkt_found].rf_chain].rssi_offset;
+         pkt_data[nb_pkt_found].rssis += CONTEXT_RF_CHAIN[pkt_data[nb_pkt_found].rf_chain].rssi_offset;
+
+-        rssi_temperature_offset = sx1302_rssi_get_temperature_offset(&CONTEXT_RF_CHAIN[pkt_data[nb_pkt_found].rf_chain].rssi_tcomp, current_temperature);
+-        pkt_data[nb_pkt_found].rssic += rssi_temperature_offset;
+-        pkt_data[nb_pkt_found].rssis += rssi_temperature_offset;
+-        DEBUG_PRINTF("INFO: RSSI temperature offset applied: %.3f dB (current temperature %.1f C)\n", rssi_temperature_offset, current_temperature);
++        if (temperature_valid == true) {
++            rssi_temperature_offset = sx1302_rssi_get_temperature_offset(&CONTEXT_RF_CHAIN[pkt_data[nb_pkt_found].rf_chain].rssi_tcomp, current_temperature);
++            pkt_data[nb_pkt_found].rssic += rssi_temperature_offset;
++            pkt_data[nb_pkt_found].rssis += rssi_temperature_offset;
++            DEBUG_PRINTF("INFO: RSSI temperature offset applied: %.3f dB (current temperature %.1f C)\n", rssi_temperature_offset, current_temperature);
++        }
+     }
+
+     DEBUG_PRINTF("INFO: nb pkt found:%u left:%u\n", nb_pkt_found, nb_pkt_left);
+diff --git a/libloragw/src/loragw_sx1302.c b/libloragw/src/loragw_sx1302.c
+index aa330cd..ebd276d 100644
+--- a/libloragw/src/loragw_sx1302.c
++++ b/libloragw/src/loragw_sx1302.c
+@@ -1108,6 +1108,9 @@ int sx1302_modem_enable(void) {
+
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
++static uint8_t meshtastic_tx_sync_peak1 = 2;
++static uint8_t meshtastic_tx_sync_peak2 = 4;
++
+ int sx1302_lora_syncword(bool public, uint8_t lora_service_sf) {
+     int err = LGW_REG_SUCCESS;
+
+@@ -1143,6 +1146,32 @@ int sx1302_lora_syncword(bool public, uint8_t lora_service_sf) {
+
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
++uint32_t meshtastic_sx1302_hal_abi_version(void) {
++    return 1;
++}
++
++int meshtastic_sx1302_set_syncword(uint8_t sync_word) {
++    int err = LGW_REG_SUCCESS;
++    uint8_t peak1 = ((sync_word >> 4) & 0x0F) * 2;
++    uint8_t peak2 = (sync_word & 0x0F) * 2;
++
++    meshtastic_tx_sync_peak1 = peak1;
++    meshtastic_tx_sync_peak2 = peak2;
++
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH0_SF5_PEAK1_POS_SF5, peak1);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH1_SF5_PEAK2_POS_SF5, peak2);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH0_SF6_PEAK1_POS_SF6, peak1);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH1_SF6_PEAK2_POS_SF6, peak2);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH0_SF7TO12_PEAK1_POS_SF7TO12, peak1);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_FRAME_SYNCH1_SF7TO12_PEAK2_POS_SF7TO12, peak2);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH0_PEAK1_POS, peak1);
++    err |= lgw_reg_w(SX1302_REG_RX_TOP_LORA_SERVICE_FSK_FRAME_SYNCH1_PEAK2_POS, peak2);
++
++    return err;
++}
++
++/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
++
+ uint32_t sx1302_timestamp_counter(bool pps) {
+     uint32_t inst_cnt, pps_cnt;
+     timestamp_counter_get(&counter_us, &inst_cnt, &pps_cnt);
+@@ -2413,6 +2442,8 @@ int sx1302_send(lgw_radio_type_t radio_type, struct lgw_tx_gain_lut_s * tx_lut,
+     /* performances variables */
+     struct timeval tm;
+
++    (void)lwan_public;
++
+     /* Record function start time */
+     _meas_time_start(&tm);
+
+@@ -2596,19 +2627,10 @@ int sx1302_send(lgw_radio_type_t radio_type, struct lgw_tx_gain_lut_s * tx_lut,
+             CHECK_ERR(err);
+
+             /* Syncword */
+-            if ((lwan_public == false) || (pkt_data->datarate == DR_LORA_SF5) || (pkt_data->datarate == DR_LORA_SF6)) {
+-                DEBUG_MSG("Setting LoRa syncword 0x12\n");
+-                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_0_PEAK1_POS(pkt_data->rf_chain), 2);
+-                CHECK_ERR(err);
+-                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_1_PEAK2_POS(pkt_data->rf_chain), 4);
+-                CHECK_ERR(err);
+-            } else {
+-                DEBUG_MSG("Setting LoRa syncword 0x34\n");
+-                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_0_PEAK1_POS(pkt_data->rf_chain), 6);
+-                CHECK_ERR(err);
+-                err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_1_PEAK2_POS(pkt_data->rf_chain), 8);
+-                CHECK_ERR(err);
+-            }
++            err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_0_PEAK1_POS(pkt_data->rf_chain), meshtastic_tx_sync_peak1);
++            CHECK_ERR(err);
++            err = lgw_reg_w(SX1302_REG_TX_TOP_FRAME_SYNCH_1_PEAK2_POS(pkt_data->rf_chain), meshtastic_tx_sync_peak2);
++            CHECK_ERR(err);
+
+             /* Set Fine Sync for SF5/SF6 */
+             if ((pkt_data->datarate == DR_LORA_SF5) || (pkt_data->datarate == DR_LORA_SF6)) {

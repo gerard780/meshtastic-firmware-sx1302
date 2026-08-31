@@ -1,0 +1,11 @@
+# CLEAN. Valid SX1302 concentrator config, including the runtime HAL path.
+Lora:
+  Module: sx1302
+  spidev: spidev0.0
+  Reset: 25
+  SX1302_MAX_POWER: 27
+  SX1302_LIB: /usr/local/lib/libloragw.so
+  SX1302_TX_GAIN_PROFILE: semtech
+
+General:
+  APIPort: 4403

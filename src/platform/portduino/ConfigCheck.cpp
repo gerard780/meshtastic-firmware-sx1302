@@ -53,6 +53,9 @@ const std::map<std::string, std::set<std::string>> &schema()
           "LR1120_MAX_POWER",
           "RF95_MAX_POWER",
           "SX126X_MAX_POWER",
+          "SX1302_LIB",
+          "SX1302_MAX_POWER",
+          "SX1302_TX_GAIN_PROFILE",
           "SX128X_MAX_POWER",
           "TX_GAIN_LORA",
           "USB_PID",
@@ -379,6 +382,9 @@ const std::map<std::string, ValueSpec> &valueSpecs()
         {"Lora.LR1120_MAX_POWER", {kInt, false}},
         {"Lora.RF95_MAX_POWER", {kInt, false}},
         {"Lora.SX126X_MAX_POWER", {kInt, false}},
+        {"Lora.SX1302_LIB", {kString, false}},
+        {"Lora.SX1302_MAX_POWER", {kInt, false}},
+        {"Lora.SX1302_TX_GAIN_PROFILE", {kString, false}},
         {"Lora.SX128X_MAX_POWER", {kInt, false}},
         // TX_GAIN_LORA is not in this table: it accepts a list OR a bare scalar, and
         // only the list path is fatal. See checkTxGain().
@@ -927,6 +933,21 @@ void checkMergedConfig(const PathIndex &paths, std::vector<Finding> &findings)
         findings.push_back(
             {kWarn, merged, 0,
              "a Lora.rfswitch_table is set but Module is " + moduleName() + ", and the table is only applied to LR11xx radios"});
+
+    if (portduino_config.lora_module == use_sx1302 &&
+        (portduino_config.sx1302_max_power < 0 || portduino_config.sx1302_max_power > 27))
+        findings.push_back({kWarn, merged, 0,
+                            "Lora.SX1302_MAX_POWER " + std::to_string(portduino_config.sx1302_max_power) +
+                                " is outside the supported 0-27 dBm range and will be clamped"});
+
+    if (portduino_config.lora_module == use_sx1302 && portduino_config.sx1302_lib.empty())
+        findings.push_back({kError, merged, 0, "Lora.SX1302_LIB is empty, so meshtasticd cannot load the concentrator HAL"});
+
+    if (portduino_config.lora_module == use_sx1302 && portduino_config.sx1302_tx_gain_profile != "semtech" &&
+        portduino_config.sx1302_tx_gain_profile != "rak")
+        findings.push_back(
+            {kError, merged, 0,
+             "Lora.SX1302_TX_GAIN_PROFILE must be 'semtech' or 'rak', not '" + portduino_config.sx1302_tx_gain_profile + "'"});
 
     // Either way -- the old uncaught filesystem_error abort or today's clean exit -- the files
     // meant to configure the radio are not being loaded.

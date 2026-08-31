@@ -802,7 +802,10 @@ void portduinoSetup()
 
     // Only initialize the radio pins when dealing with real, kernel controlled SPI hardware
     if (portduino_config.lora_spi_dev != "" && portduino_config.lora_spi_dev != "ch341") {
-        SPI.begin(portduino_config.lora_spi_dev.c_str());
+        // libloragw owns and configures the concentrator SPI device directly.
+        if (portduino_config.lora_module != use_sx1302) {
+            SPI.begin(portduino_config.lora_spi_dev.c_str());
+        }
     }
 
     if (portduino_config.traceFilename != "") {
@@ -955,6 +958,12 @@ bool loadConfig(const char *configPath)
                 portduino_config.lr2021_max_power_hf = yamlConfig["Lora"]["LR2021_MAX_POWER_HF"].as<int>(12);
             if (yamlConfig["Lora"]["RF95_MAX_POWER"])
                 portduino_config.rf95_max_power = yamlConfig["Lora"]["RF95_MAX_POWER"].as<int>(20);
+            if (yamlConfig["Lora"]["SX1302_MAX_POWER"])
+                portduino_config.sx1302_max_power = yamlConfig["Lora"]["SX1302_MAX_POWER"].as<int>(27);
+            if (yamlConfig["Lora"]["SX1302_LIB"])
+                portduino_config.sx1302_lib = yamlConfig["Lora"]["SX1302_LIB"].as<std::string>("/usr/local/lib/libloragw.so");
+            if (yamlConfig["Lora"]["SX1302_TX_GAIN_PROFILE"])
+                portduino_config.sx1302_tx_gain_profile = yamlConfig["Lora"]["SX1302_TX_GAIN_PROFILE"].as<std::string>("semtech");
 
             if (yamlConfig["Lora"]["TX_GAIN_LORA"]) {
                 YAML::Node tx_gain_node = yamlConfig["Lora"]["TX_GAIN_LORA"];

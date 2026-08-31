@@ -28,6 +28,9 @@
 #include "platform/portduino/PortduinoGlue.h"
 #include "platform/portduino/SimRadio.h"
 #include "platform/portduino/USBHal.h"
+#ifndef ARCH_PORTDUINO_WASM
+#include "platform/portduino/SX1302Interface.h"
+#endif
 #endif
 
 #if defined(ARCH_ESP32) && defined(USE_MCP23017)
@@ -381,6 +384,23 @@ std::unique_ptr<RadioInterface> initLoRa()
 #endif
 
 #ifdef ARCH_PORTDUINO
+    if (portduino_config.lora_module == use_sx1302) {
+#ifndef ARCH_PORTDUINO_WASM
+        rIf = std::unique_ptr<RadioInterface>(new SX1302Interface());
+        if (!rIf->init()) {
+            LOG_ERROR("SX1302 init failed");
+            rIf = nullptr;
+            exit(EXIT_FAILURE);
+        }
+        LOG_INFO("SX1302 init success");
+        radioType = SX1302_RADIO;
+        return rIf;
+#else
+        LOG_ERROR("SX1302 is not available in the browser build");
+        exit(EXIT_FAILURE);
+#endif
+    }
+
     // as one can't use a function pointer to the class constructor:
     auto loraModuleInterface = [](LockingArduinoHal *hal, RADIOLIB_PIN_TYPE cs, RADIOLIB_PIN_TYPE irq, RADIOLIB_PIN_TYPE rst,
                                   RADIOLIB_PIN_TYPE busy) {
