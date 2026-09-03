@@ -84,8 +84,10 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${package_output}"
-          dpkg-deb --info dist/*.deb
-          dpkg-deb --contents dist/*.deb
+          deb_package="$(find dist -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "${deb_package}"
+          dpkg-deb --info "${deb_package}"
+          dpkg-deb --contents "${deb_package}" >/dev/null
 
       - uses: actions/upload-artifact@v7
         with:
