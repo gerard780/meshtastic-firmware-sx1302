@@ -75,9 +75,12 @@ jobs:
                 dist 2>&1 \
           ); then
             printf '%s\n' "${package_output}"
-            package_error=$(printf '%s\n' "${package_output}" | tail -n 8 | tr '\n' ' ')
+            package_error=$(printf '%s\n' "${package_output}" | tail -n 1)
+            package_error=${package_error//'%'/'%25'}
+            package_error=${package_error//$'\r'/'%0D'}
+            package_error=${package_error//$'\n'/'%0A'}
             printf '### Debian package assembly failed\n\n```text\n%s\n```\n' "${package_output}" >>"${GITHUB_STEP_SUMMARY}"
-            echo "::error title=Debian package assembly failed::${package_error}"
+            echo "::error file=bin/package-sx1302-deb.sh,line=1,title=Debian package assembly failed::${package_error}"
             exit 1
           fi
           printf '%s\n' "${package_output}"
