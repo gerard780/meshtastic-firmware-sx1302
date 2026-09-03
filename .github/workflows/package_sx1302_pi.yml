@@ -31,6 +31,13 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: sx1302-arm64-trixie-${{ hashFiles('platformio.ini', 'variants/native/**/*.ini', 'src/**', 'bin/build-sx1302-hal.sh', 'bin/patches/**') }}
+
       - name: Build ARM64 daemon and SX1302 HAL
         run: |
           ./bin/build-native.sh native
@@ -50,12 +57,20 @@ jobs:
           package_version="$(./bin/buildinfo.py short).0+sx1302.${GITHUB_SHA::8}"
           meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
           test -n "${meshtasticd_binary}"
-          PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
-            ./bin/package-sx1302-deb.sh \
-              "${meshtasticd_binary}" \
-              build/pi-package/libloragw.so \
-              build/pi-package/web \
-              dist
+          if ! package_output=$( \
+            PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
+              ./bin/package-sx1302-deb.sh \
+                "${meshtasticd_binary}" \
+                build/pi-package/libloragw.so \
+                build/pi-package/web \
+                dist 2>&1 \
+          ); then
+            printf '%s\n' "${package_output}"
+            package_error=$(printf '%s\n' "${package_output}" | tail -n 8 | tr '\n' ' ')
+            echo "::error title=Debian package assembly failed::${package_error}"
+            exit 1
+          fi
+          printf '%s\n' "${package_output}"
           dpkg-deb --info dist/*.deb
           dpkg-deb --contents dist/*.deb
 
