@@ -100,13 +100,9 @@ jobs:
 
       - name: Publish tagged package
         if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          apt-get update
-          apt-get install --no-install-recommends -y gh
-          gh release create "${GITHUB_REF_NAME}" dist/*.deb \
-            --verify-tag \
-            --prerelease \
-            --title "Meshtastic SX1302 ${GITHUB_REF_NAME}" \
-            --notes "Prebuilt ARM64 package for Raspberry Pi OS Trixie. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          prerelease: true
+          name: Meshtastic SX1302 ${{ github.ref_name }}
+          body: "Prebuilt ARM64 package for Raspberry Pi OS Trixie. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
