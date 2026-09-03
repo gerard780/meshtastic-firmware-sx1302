@@ -1,0 +1,48 @@
+#!/bin/sh
+
+set -eu
+
+user_id=$(id -u)
+if [ "${user_id}" -ne 0 ]; then
+	echo "Run this command as root (for example, with sudo)." >&2
+	exit 1
+fi
+
+case "${1-}" in
+rak | mntd)
+	profile="lora-helium-rak-v2-sx1302.yaml"
+	;;
+sensecap | m1)
+	profile="lora-helium-sensecap-m1-sx1302.yaml"
+	;;
+*)
+	echo "Usage: meshtasticd-sx1302-setup rak|sensecap" >&2
+	exit 2
+	;;
+esac
+
+available="/etc/meshtasticd/available.d/${profile}"
+active="/etc/meshtasticd/config.d/sx1302.yaml"
+
+if [ ! -f "${available}" ]; then
+	echo "Missing packaged profile: ${available}" >&2
+	exit 1
+fi
+
+mkdir -p /etc/meshtasticd/config.d
+ln -sfn "${available}" "${active}"
+
+if command -v raspi-config >/dev/null 2>&1; then
+	raspi-config nonint do_spi 0
+fi
+
+systemctl daemon-reload
+systemctl enable meshtasticd.service
+
+if [ -e /dev/spidev0.0 ]; then
+	systemctl restart meshtasticd.service
+	echo "Enabled ${profile} and started meshtasticd."
+	echo "Run 'systemctl status meshtasticd' to check it."
+else
+	echo "Enabled ${profile} and SPI. Reboot this Raspberry Pi to start meshtasticd."
+fi

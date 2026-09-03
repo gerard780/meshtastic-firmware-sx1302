@@ -10,5 +10,6 @@ Lora:
   Reset: 17
   Enable_Pins:
     - 18
+  SX1302_LIB: /usr/lib/meshtasticd/libloragw.so
   SX1302_MAX_POWER: 26
   SX1302_TX_GAIN_PROFILE: semtech

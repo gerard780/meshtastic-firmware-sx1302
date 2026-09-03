@@ -1,0 +1,74 @@
+name: Package SX1302 for Raspberry Pi
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - sx1302-v*
+
+permissions:
+  contents: write
+
+jobs:
+  build-arm64-trixie:
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y \
+            ca-certificates curl dpkg-dev g++ gcc git gzip make pkg-config python3-grpc-tools python3-pip wget zip \
+            libbluetooth-dev libcurl4-gnutls-dev libgpiod-dev libi2c-dev libinput-dev libjsoncpp-dev \
+            liborcania-dev libsdl2-dev libsqlite3-dev libssl-dev libulfius-dev libusb-1.0-0-dev libuv1-dev \
+            libx11-dev libxkbcommon-x11-dev libyaml-cpp-dev
+          rm -rf /var/lib/apt/lists/*
+          pip install --break-system-packages --no-cache-dir platformio
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Build ARM64 daemon and SX1302 HAL
+        run: |
+          ./bin/build-native.sh native
+          mkdir -p build/pi-package
+          ./bin/build-sx1302-hal.sh build/pi-package/libloragw.so
+
+      - name: Fetch web interface
+        run: |
+          curl -fsSL "https://github.com/meshtastic/web/releases/download/v$(cat bin/web.version)/build.tar" \
+            -o build/pi-package/web.tar
+          mkdir -p build/pi-package/web
+          tar -xf build/pi-package/web.tar -C build/pi-package/web
+          gzip -dr build/pi-package/web
+
+      - name: Build Debian package
+        run: |
+          package_version="$(./bin/buildinfo.py short).0+sx1302.${GITHUB_SHA::8}"
+          PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
+            ./bin/package-sx1302-deb.sh \
+              release/meshtasticd_linux_aarch64 \
+              build/pi-package/libloragw.so \
+              build/pi-package/web \
+              dist
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meshtasticd-sx1302-arm64-trixie
+          path: dist/*.deb
+
+      - name: Publish tagged package
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y gh
+          gh release create "${GITHUB_REF_NAME}" dist/*.deb \
+            --verify-tag \
+            --prerelease \
+            --title "Meshtastic SX1302 ${GITHUB_REF_NAME}" \
+            --notes "Prebuilt ARM64 package for Raspberry Pi OS Trixie. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
