@@ -3,6 +3,7 @@
 #include "PortduinoGlue.h"
 #include "RadioTxHook.h"
 #include "Router.h"
+#include "SX1302Eui.h"
 #include "SX1302Interface.h"
 #include "TestUtil.h"
 #include "configuration.h"
@@ -238,6 +239,24 @@ void test_packet_counters_are_visible_through_radio_interface()
     TEST_ASSERT_EQUAL_UINT16(1, iface->txDrop);
 }
 
+void test_eui_is_converted_to_locally_administered_mac()
+{
+    uint8_t mac[6] = {};
+
+    TEST_ASSERT_TRUE(sx1302EuiToMac(UINT64_C(0x0016c001ff165c29), mac));
+
+    const uint8_t expected[6] = {0xc2, 0x01, 0xff, 0x16, 0x5c, 0x29};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, mac, sizeof(mac));
+}
+
+void test_blank_eui_is_rejected()
+{
+    uint8_t mac[6] = {};
+
+    TEST_ASSERT_FALSE(sx1302EuiToMac(0, mac));
+    TEST_ASSERT_FALSE(sx1302EuiToMac(UINT64_MAX, mac));
+}
+
 void test_destructor_stops_after_release_hook_reconfigures()
 {
     ReconfiguringReleaseHook hook;
@@ -271,6 +290,8 @@ void setup()
     RUN_TEST(test_single_receive_error_does_not_request_recovery);
     RUN_TEST(test_sustained_receive_errors_request_portduino_recovery);
     RUN_TEST(test_packet_counters_are_visible_through_radio_interface);
+    RUN_TEST(test_eui_is_converted_to_locally_administered_mac);
+    RUN_TEST(test_blank_eui_is_rejected);
     RUN_TEST(test_destructor_stops_after_release_hook_reconfigures);
     exit(UNITY_END());
 }

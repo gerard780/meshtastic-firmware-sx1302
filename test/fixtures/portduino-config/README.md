@@ -95,7 +95,7 @@ is `uint16_t[22]`, so extra points are dropped and out-of-range values wrap.
 ## MAC address
 
 The MAC no longer determines NodeNum - that comes from the public key - but a MAC
-that fails to apply still falls through to the BlueZ and LoRa-serial fallbacks, and
+that fails to apply still falls through to the SX1302 EUI, BlueZ, and LoRa-serial fallbacks, and
 if those yield nothing meshtasticd exits with "Blank MAC Address not allowed!".
 
 | File                      | Expected                                                                                                                                    |

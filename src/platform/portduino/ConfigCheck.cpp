@@ -614,7 +614,7 @@ void checkLoraModule(const std::string &file, const YAML::Node &module, std::vec
 }
 
 // loadConfig() rejects a bad MACAddress or MACAddressSource silently, falling through to the
-// BlueZ and LoRa-serial fallbacks; if those yield nothing, meshtasticd exits on a blank MAC.
+// SX1302 EUI, BlueZ, and LoRa-serial fallbacks; if those yield nothing, meshtasticd exits on a blank MAC.
 void checkMacAddress(const std::string &file, const YAML::Node &general, std::vector<Finding> &findings)
 {
     const YAML::Node address = general["MACAddress"];
