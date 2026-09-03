@@ -3,6 +3,8 @@ name: Package SX1302 for Raspberry Pi
 on:
   workflow_dispatch:
   push:
+    branches:
+      - packaging/raspberry-pi
     tags:
       - sx1302-v*
 
