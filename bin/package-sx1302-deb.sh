@@ -40,7 +40,7 @@ find "${package_root}/etc/meshtasticd/available.d" "${package_root}/usr/share/me
 
 strip --strip-unneeded "${package_root}/usr/bin/meshtasticd" "${package_root}/usr/lib/meshtasticd/libloragw.so"
 
-shlibs=$(dpkg-shlibdeps -O -e"${binary}" -e"${hal}" 2>/dev/null)
+shlibs=$(dpkg-shlibdeps --ignore-missing-info -O -e"${binary}" -e"${hal}")
 dependencies=${shlibs#shlibs:Depends=}
 
 install -d -m 0755 "${package_root}/DEBIAN"

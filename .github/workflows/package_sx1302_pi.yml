@@ -48,9 +48,11 @@ jobs:
       - name: Build Debian package
         run: |
           package_version="$(./bin/buildinfo.py short).0+sx1302.${GITHUB_SHA::8}"
+          meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
+          test -n "${meshtasticd_binary}"
           PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
             ./bin/package-sx1302-deb.sh \
-              release/meshtasticd_linux_aarch64 \
+              "${meshtasticd_binary}" \
               build/pi-package/libloragw.so \
               build/pi-package/web \
               dist
