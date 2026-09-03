@@ -31,7 +31,8 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: pio-cache
         with:
           path: |
             ~/.platformio
@@ -43,6 +44,14 @@ jobs:
           ./bin/build-native.sh native
           mkdir -p build/pi-package
           ./bin/build-sx1302-hal.sh build/pi-package/libloragw.so
+
+      - uses: actions/cache/save@v5
+        if: steps.pio-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ steps.pio-cache.outputs.cache-primary-key }}
 
       - name: Fetch web interface
         run: |
@@ -67,6 +76,7 @@ jobs:
           ); then
             printf '%s\n' "${package_output}"
             package_error=$(printf '%s\n' "${package_output}" | tail -n 8 | tr '\n' ' ')
+            printf '### Debian package assembly failed\n\n```text\n%s\n```\n' "${package_output}" >>"${GITHUB_STEP_SUMMARY}"
             echo "::error title=Debian package assembly failed::${package_error}"
             exit 1
           fi

@@ -40,8 +40,27 @@ find "${package_root}/etc/meshtasticd/available.d" "${package_root}/usr/share/me
 
 strip --strip-unneeded "${package_root}/usr/bin/meshtasticd" "${package_root}/usr/lib/meshtasticd/libloragw.so"
 
-shlibs=$(dpkg-shlibdeps --ignore-missing-info -O -e"${binary}" -e"${hal}")
-dependencies=${shlibs#shlibs:Depends=}
+if shlibs=$(dpkg-shlibdeps --ignore-missing-info -O -e"${binary}" -e"${hal}"); then
+	dependencies=${shlibs#shlibs:Depends=}
+else
+	echo "dpkg-shlibdeps could not resolve every runtime library; falling back to package ownership" >&2
+	dependencies=$(
+		while IFS= read -r library; do
+			owner_line=$(dpkg-query --search "$(readlink -f "${library}")" 2>/dev/null | head -n 1 || true)
+			owner=${owner_line%%: /*}
+			owner=${owner%:"${architecture}"}
+			[[ -n ${owner} ]] && printf '%s\n' "${owner}"
+		done < <(
+			{
+				ldd "${binary}" || true
+				ldd "${hal}" || true
+			} |
+				awk '$2 == "=>" && $3 ~ /^\// { print $3 } $1 ~ /^\// { print $1 }' |
+				sort -u || true
+		)
+	)
+	dependencies=$(printf '%s\n' "${dependencies}" | sort -u | paste -sd, -)
+fi
 
 install -d -m 0755 "${package_root}/DEBIAN"
 cat >"${package_root}/DEBIAN/control" <<EOF
