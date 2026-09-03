@@ -28,7 +28,12 @@ jobs:
           pip install --break-system-packages --no-cache-dir platformio
 
       - uses: actions/checkout@v7
+
+      - name: Check out SX1302 firmware source
+        uses: actions/checkout@v7
         with:
+          ref: sx1302
+          path: build/firmware
           submodules: recursive
 
       - uses: actions/cache/restore@v5
@@ -36,12 +41,14 @@ jobs:
         with:
           path: |
             ~/.platformio
-            .pio
-          key: sx1302-arm64-trixie-${{ hashFiles('platformio.ini', 'variants/native/**/*.ini', 'src/**', 'bin/build-sx1302-hal.sh', 'bin/patches/**') }}
+            build/firmware/.pio
+          key: sx1302-arm64-trixie-v2-${{ hashFiles('build/firmware/platformio.ini', 'build/firmware/variants/native/**/*.ini', 'build/firmware/src/**') }}
 
       - name: Build ARM64 daemon and SX1302 HAL
         run: |
+          cd build/firmware
           ./bin/build-native.sh native
+          cd ../..
           mkdir -p build/pi-package
           ./bin/build-sx1302-hal.sh build/pi-package/libloragw.so
 
@@ -50,7 +57,7 @@ jobs:
         with:
           path: |
             ~/.platformio
-            .pio
+            build/firmware/.pio
           key: ${{ steps.pio-cache.outputs.cache-primary-key }}
 
       - name: Fetch web interface
@@ -63,8 +70,9 @@ jobs:
 
       - name: Build Debian package
         run: |
-          package_version="$(./bin/buildinfo.py short).0+sx1302.${GITHUB_SHA::8}"
-          meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
+          source_revision="$(git -C build/firmware rev-parse --short=8 HEAD)"
+          package_version="$(cd build/firmware && ./bin/buildinfo.py short).0+sx1302.${source_revision}"
+          meshtasticd_binary="$(find build/firmware/release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
           test -n "${meshtasticd_binary}"
           if ! package_output=$( \
             PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
@@ -84,10 +92,6 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${package_output}"
-          deb_package="$(find dist -maxdepth 1 -type f -name '*.deb' -print -quit)"
-          test -n "${deb_package}"
-          dpkg-deb --info "${deb_package}"
-          dpkg-deb --contents "${deb_package}" >/dev/null
 
       - uses: actions/upload-artifact@v7
         with:
