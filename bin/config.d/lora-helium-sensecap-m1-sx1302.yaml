@@ -1,0 +1,18 @@
+Meta:
+  name: SenseCAP M1 WM1302/WM1303
+  support: community
+  compatible:
+    - raspberry-pi
+
+Lora:
+  Module: sx1302
+  spidev: spidev0.0
+  Reset: 17
+  Enable_Pins:
+    - 18
+  SX1302_LIB: /usr/lib/meshtasticd/libloragw.so
+  SX1302_MAX_POWER: 26
+  SX1302_TX_GAIN_PROFILE: semtech
+
+General:
+  APIPort: 4403

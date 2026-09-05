@@ -1,0 +1,101 @@
+name: Package SX1302 for Raspberry Pi
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - backport/sx1302-v2.7.26
+    tags:
+      - sx1302-v2.7.26-*
+
+permissions:
+  contents: write
+
+jobs:
+  build-arm64-trixie:
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y \
+            ca-certificates curl dpkg-dev g++ gcc git gzip make pkg-config python3-grpc-tools python3-pip wget zip \
+            libbluetooth-dev libcurl4-gnutls-dev libgpiod-dev libi2c-dev libinput-dev libjsoncpp-dev \
+            liborcania-dev libsdl2-dev libsqlite3-dev libssl-dev libulfius-dev libusb-1.0-0-dev libuv1-dev \
+            libx11-dev libxkbcommon-x11-dev libyaml-cpp-dev
+          rm -rf /var/lib/apt/lists/*
+          pip install --break-system-packages --no-cache-dir platformio
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/cache/restore@v5
+        id: pio-cache
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: sx1302-2.7.26-arm64-trixie-v1-${{ hashFiles('platformio.ini', 'variants/native/**/*.ini', 'src/**') }}
+
+      - name: Build ARM64 daemon and SX1302 HAL
+        run: |
+          ./bin/build-native.sh native
+          mkdir -p build/pi-package
+          ./bin/build-sx1302-hal.sh build/pi-package/libloragw.so
+
+      - uses: actions/cache/save@v5
+        if: steps.pio-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ steps.pio-cache.outputs.cache-primary-key }}
+
+      - name: Fetch web interface
+        run: |
+          curl -fsSL "https://github.com/meshtastic/web/releases/download/v$(cat bin/web.version)/build.tar" \
+            -o build/pi-package/web.tar
+          mkdir -p build/pi-package/web
+          tar -xf build/pi-package/web.tar -C build/pi-package/web
+          gzip -dr build/pi-package/web
+
+      - name: Build Debian package
+        run: |
+          source_revision="$(git rev-parse --short=8 HEAD)"
+          package_version="$(./bin/buildinfo.py short).0+sx1302.${source_revision}"
+          meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
+          test -n "${meshtasticd_binary}"
+          if ! package_output=$( \
+            PACKAGE_ARCHITECTURE=arm64 PACKAGE_VERSION="${package_version}" \
+              ./bin/package-sx1302-deb.sh \
+                "${meshtasticd_binary}" \
+                build/pi-package/libloragw.so \
+                build/pi-package/web \
+                dist 2>&1 \
+          ); then
+            printf '%s\n' "${package_output}"
+            package_error=$(printf '%s\n' "${package_output}" | tail -n 1)
+            package_error=${package_error//'%'/'%25'}
+            package_error=${package_error//$'\r'/'%0D'}
+            package_error=${package_error//$'\n'/'%0A'}
+            printf '### Debian package assembly failed\n\n```text\n%s\n```\n' "${package_output}" >>"${GITHUB_STEP_SUMMARY}"
+            echo "::error file=bin/package-sx1302-deb.sh,line=1,title=Debian package assembly failed::${package_error}"
+            exit 1
+          fi
+          printf '%s\n' "${package_output}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meshtasticd-sx1302-arm64-trixie
+          path: dist/*.deb
+
+      - name: Publish tagged package
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          prerelease: true
+          name: Meshtastic SX1302 ${{ github.ref_name }}
+          body: "Prebuilt ARM64 package for Raspberry Pi OS Trixie. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"

@@ -42,7 +42,8 @@ enum lora_module_enum {
     use_lr1110,
     use_lr1120,
     use_lr1121,
-    use_llcc68
+    use_llcc68,
+    use_sx1302
 };
 
 struct pinMapping {
@@ -70,8 +71,9 @@ std::string exec(const char *cmd);
 extern struct portduino_config_struct {
     // Lora
     std::map<lora_module_enum, std::string> loraModules = {
-        {use_simradio, "sim"},  {use_autoconf, "auto"}, {use_rf95, "RF95"},     {use_sx1262, "sx1262"}, {use_sx1268, "sx1268"},
-        {use_sx1280, "sx1280"}, {use_lr1110, "lr1110"}, {use_lr1120, "lr1120"}, {use_lr1121, "lr1121"}, {use_llcc68, "LLCC68"}};
+        {use_simradio, "sim"},  {use_autoconf, "auto"}, {use_rf95, "RF95"},     {use_sx1262, "sx1262"},
+        {use_sx1268, "sx1268"}, {use_sx1280, "sx1280"}, {use_lr1110, "lr1110"}, {use_lr1120, "lr1120"},
+        {use_lr1121, "lr1121"}, {use_llcc68, "LLCC68"}, {use_sx1302, "sx1302"}};
 
     std::map<screen_modules, std::string> screen_names = {{x11, "X11"},         {fb, "FB"},           {st7789, "ST7789"},
                                                           {st7735, "ST7735"},   {st7735s, "ST7735S"}, {st7796, "ST7796"},
@@ -94,6 +96,9 @@ extern struct portduino_config_struct {
     int lr1110_max_power = 22;
     int lr1120_max_power = 13;
     int rf95_max_power = 20;
+    int sx1302_max_power = 27;
+    std::string sx1302_lib = "/usr/local/lib/libloragw.so";
+    std::string sx1302_tx_gain_profile = "semtech";
     bool dio2_as_rf_switch = false;
     int dio3_tcxo_voltage = 0;
     int lora_usb_pid = 0x5512;
@@ -250,6 +255,12 @@ extern struct portduino_config_struct {
             out << YAML::Key << "LR1120_MAX_POWER" << YAML::Value << lr1120_max_power;
         if (rf95_max_power != 20)
             out << YAML::Key << "RF95_MAX_POWER" << YAML::Value << rf95_max_power;
+        if (sx1302_max_power != 27)
+            out << YAML::Key << "SX1302_MAX_POWER" << YAML::Value << sx1302_max_power;
+        if (sx1302_lib != "/usr/local/lib/libloragw.so")
+            out << YAML::Key << "SX1302_LIB" << YAML::Value << sx1302_lib;
+        if (sx1302_tx_gain_profile != "semtech")
+            out << YAML::Key << "SX1302_TX_GAIN_PROFILE" << YAML::Value << sx1302_tx_gain_profile;
 
         if (num_pa_points > 1) {
             out << YAML::Key << "TX_GAIN_LORA" << YAML::Value << YAML::Flow << YAML::BeginSeq;

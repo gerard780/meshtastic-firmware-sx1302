@@ -8,6 +8,7 @@
 
 #include "PortduinoGlue.h"
 #include "SHA256.h"
+#include "SX1302Eui.h"
 #include "api/ServerAPI.h"
 #include "meshUtils.h"
 #include <ErriezCRC32.h>
@@ -148,6 +149,14 @@ void getMacAddr(uint8_t *dmac)
         return;
     } else {
 #ifdef PORTDUINO_LINUX_HARDWARE
+        if (getSX1302EuiMac(dmac)) {
+            char macBuf[13] = {0};
+            snprintf(macBuf, sizeof(macBuf), "%02X%02X%02X%02X%02X%02X", dmac[0], dmac[1], dmac[2], dmac[3], dmac[4],
+                     dmac[5]);
+            portduino_config.mac_address = macBuf;
+            return;
+        }
+
         struct hci_dev_info di = {0};
         di.dev_id = 0;
         bdaddr_t bdaddr;
@@ -557,20 +566,6 @@ void portduinoSetup()
         }
     }
 
-    getMacAddr(dmac);
-#ifndef UNIT_TEST
-    if (dmac[0] == 0 && dmac[1] == 0 && dmac[2] == 0 && dmac[3] == 0 && dmac[4] == 0 && dmac[5] == 0) {
-        std::cout << "*** Blank MAC Address not allowed!" << std::endl;
-        std::cout << "Please set a MAC Address in config.yaml using either MACAddress or MACAddressSource." << std::endl;
-        exit(EXIT_FAILURE);
-    }
-#endif
-    printf("MAC ADDRESS: %02X:%02X:%02X:%02X:%02X:%02X\n", dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
-    // Rather important to set this, if not running simulated.
-    uint32_t seed = static_cast<uint32_t>(time(NULL));
-    HardwareRNG::seed(seed);
-    randomSeed(seed);
-
     std::string defaultGpioChipName = gpioChipName + std::to_string(portduino_config.lora_default_gpiochip);
 
     std::set<int> used_pins;
@@ -669,9 +664,26 @@ void portduinoSetup()
         }
     }
 
+    getMacAddr(dmac);
+#ifndef UNIT_TEST
+    if (dmac[0] == 0 && dmac[1] == 0 && dmac[2] == 0 && dmac[3] == 0 && dmac[4] == 0 && dmac[5] == 0) {
+        std::cout << "*** Blank MAC Address not allowed!" << std::endl;
+        std::cout << "Please set a MAC Address in config.yaml using either MACAddress or MACAddressSource." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+#endif
+    printf("MAC ADDRESS: %02X:%02X:%02X:%02X:%02X:%02X\n", dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5]);
+    // Rather important to set this, if not running simulated.
+    uint32_t seed = static_cast<uint32_t>(time(NULL));
+    HardwareRNG::seed(seed);
+    randomSeed(seed);
+
     // Only initialize the radio pins when dealing with real, kernel controlled SPI hardware
     if (portduino_config.lora_spi_dev != "" && portduino_config.lora_spi_dev != "ch341") {
-        SPI.begin(portduino_config.lora_spi_dev.c_str());
+        // libloragw owns and configures the concentrator SPI device directly.
+        if (portduino_config.lora_module != use_sx1302) {
+            SPI.begin(portduino_config.lora_spi_dev.c_str());
+        }
     }
 
     if (portduino_config.traceFilename != "") {
@@ -797,6 +809,12 @@ bool loadConfig(const char *configPath)
                 portduino_config.lr1120_max_power = yamlConfig["Lora"]["LR1120_MAX_POWER"].as<int>(13);
             if (yamlConfig["Lora"]["RF95_MAX_POWER"])
                 portduino_config.rf95_max_power = yamlConfig["Lora"]["RF95_MAX_POWER"].as<int>(20);
+            if (yamlConfig["Lora"]["SX1302_MAX_POWER"])
+                portduino_config.sx1302_max_power = yamlConfig["Lora"]["SX1302_MAX_POWER"].as<int>(27);
+            if (yamlConfig["Lora"]["SX1302_LIB"])
+                portduino_config.sx1302_lib = yamlConfig["Lora"]["SX1302_LIB"].as<std::string>("/usr/local/lib/libloragw.so");
+            if (yamlConfig["Lora"]["SX1302_TX_GAIN_PROFILE"])
+                portduino_config.sx1302_tx_gain_profile = yamlConfig["Lora"]["SX1302_TX_GAIN_PROFILE"].as<std::string>("semtech");
 
             if (yamlConfig["Lora"]["TX_GAIN_LORA"]) {
                 YAML::Node tx_gain_node = yamlConfig["Lora"]["TX_GAIN_LORA"];
