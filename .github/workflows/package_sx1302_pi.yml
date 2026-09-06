@@ -31,6 +31,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Trust container checkout
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
       - uses: actions/cache/restore@v5
         id: pio-cache
         with:
