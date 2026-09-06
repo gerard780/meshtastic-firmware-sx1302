@@ -166,6 +166,7 @@ extern struct portduino_config_struct {
     // Logging
     portduino_log_level logoutputlevel = level_debug;
     std::string traceFilename;
+    bool packet_logs = false;
     bool ascii_logs = !isatty(1);
     bool ascii_logs_explicit = false;
 
@@ -482,6 +483,8 @@ extern struct portduino_config_struct {
         }
         if (traceFilename != "")
             out << YAML::Key << "TraceFile" << YAML::Value << traceFilename;
+        if (packet_logs)
+            out << YAML::Key << "PacketLog" << YAML::Value << packet_logs;
         if (JSONFilename != "") {
             out << YAML::Key << "JSONFile" << YAML::Value << JSONFilename;
             if (JSONFileRotate != 0)

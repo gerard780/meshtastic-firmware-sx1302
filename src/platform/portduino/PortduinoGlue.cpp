@@ -759,6 +759,7 @@ bool loadConfig(const char *configPath)
                 portduino_config.logoutputlevel = level_error;
             }
             portduino_config.traceFilename = yamlConfig["Logging"]["TraceFile"].as<std::string>("");
+            portduino_config.packet_logs = yamlConfig["Logging"]["PacketLog"].as<bool>(false);
             portduino_config.JSONFilename = yamlConfig["Logging"]["JSONFile"].as<std::string>("");
             portduino_config.JSONFileRotate = yamlConfig["Logging"]["JSONFileRotate"].as<int>(0);
             portduino_config.JSONFilter = (_meshtastic_PortNum)yamlConfig["Logging"]["JSONFilter"].as<int>(0);

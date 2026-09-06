@@ -345,6 +345,29 @@ void RedirectablePrint::log(const char *logLevel, const char *format, ...)
     return;
 }
 
+#if ARCH_PORTDUINO
+void RedirectablePrint::packetLine(const std::string &line)
+{
+    if (!portduino_config.packet_logs || portduino_config.logoutputlevel < level_info || line.empty())
+        return;
+
+#ifdef HAS_FREE_RTOS
+    if (inDebugPrint != nullptr && xSemaphoreTake(inDebugPrint, portMAX_DELAY) == pdTRUE) {
+#else
+    if (!inDebugPrint) {
+        inDebugPrint = true;
+#endif
+        Print::write(reinterpret_cast<const uint8_t *>(line.data()), line.size());
+        write('\n');
+#ifdef HAS_FREE_RTOS
+        xSemaphoreGive(inDebugPrint);
+#else
+        inDebugPrint = false;
+#endif
+    }
+}
+#endif
+
 void RedirectablePrint::hexDump(const char *logLevel, const unsigned char *buf, uint16_t len)
 {
     const char alphabet[17] = "0123456789abcdef";

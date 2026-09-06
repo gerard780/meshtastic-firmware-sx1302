@@ -294,6 +294,9 @@ ErrorCode Router::rawSend(meshtastic_MeshPacket *p)
  */
 ErrorCode Router::send(meshtastic_MeshPacket *p)
 {
+#if ARCH_PORTDUINO
+    std::string consoleTxLine;
+#endif
     if (isToUs(p)) {
         LOG_ERROR("BUG! send() called with packet destined for local node!");
         packetPool.release(p);
@@ -376,6 +379,10 @@ ErrorCode Router::send(meshtastic_MeshPacket *p)
             abortSendAndNak(encodeResult, p);
             return encodeResult; // FIXME - this isn't a valid ErrorCode
         }
+#if ARCH_PORTDUINO
+        if (portduino_config.packet_logs && p_decoded)
+            consoleTxLine = MeshPacketSerializer::ConsoleSerialize(p_decoded, !portduino_config.ascii_logs, "<<", false);
+#endif
 #if !MESHTASTIC_EXCLUDE_MQTT
         // Only publish to MQTT if we're the original transmitter of the packet
         if (moduleConfig.mqtt.enabled && isFromUs(p) && mqtt) {
@@ -391,8 +398,17 @@ ErrorCode Router::send(meshtastic_MeshPacket *p)
     }
 #endif
 
+#if ARCH_PORTDUINO
+    if (portduino_config.packet_logs && consoleTxLine.empty())
+        consoleTxLine = MeshPacketSerializer::ConsoleSerialize(p, !portduino_config.ascii_logs, "<<", false);
+#endif
     assert(iface); // This should have been detected already in sendLocal (or we just received a packet from outside)
-    return iface->send(p);
+    const ErrorCode result = iface->send(p);
+#if ARCH_PORTDUINO
+    if (result == ERRNO_OK)
+        DEBUG_PORT.packetLine(consoleTxLine);
+#endif
+    return result;
 }
 
 /** Attempt to cancel a previously sent packet.  Returns true if a packet was found we could cancel */
@@ -740,6 +756,10 @@ void Router::handleReceived(meshtastic_MeshPacket *p, RxSource src)
 
     // Take those raw bytes and convert them back into a well structured protobuf we can understand
     auto decodedState = perhapsDecode(p);
+#if ARCH_PORTDUINO
+    if (portduino_config.packet_logs && src == RX_SRC_RADIO)
+        DEBUG_PORT.packetLine(MeshPacketSerializer::ConsoleSerialize(p, !portduino_config.ascii_logs));
+#endif
     if (decodedState == DecodeState::DECODE_FATAL) {
         // Fatal decoding error, we can't do anything with this packet
         LOG_WARN("Fatal decode error, dropping packet");

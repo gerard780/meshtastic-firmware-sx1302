@@ -19,6 +19,11 @@ void test_telemetry_environment_metrics_complete_coverage();
 void test_telemetry_environment_metrics_unset_fields();
 void test_encrypted_packet_serialization();
 void test_empty_encrypted_packet();
+void test_console_text_summary();
+void test_console_encrypted_summary();
+void test_console_tx_summary_has_no_rx_signal();
+void test_console_rx_summary_includes_zero_snr();
+void test_console_summary_strips_payload_controls();
 
 void setup()
 {
@@ -51,6 +56,13 @@ void setup()
     // Encrypted packet test
     RUN_TEST(test_encrypted_packet_serialization);
     RUN_TEST(test_empty_encrypted_packet);
+
+    // Compact, color-capable packet console lines
+    RUN_TEST(test_console_text_summary);
+    RUN_TEST(test_console_encrypted_summary);
+    RUN_TEST(test_console_tx_summary_has_no_rx_signal);
+    RUN_TEST(test_console_rx_summary_includes_zero_snr);
+    RUN_TEST(test_console_summary_strips_payload_controls);
 
     UNITY_END();
 }

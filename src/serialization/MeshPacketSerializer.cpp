@@ -6,7 +6,13 @@
 #include "mesh/generated/meshtastic/telemetry.pb.h"
 #include "modules/RoutingModule.h"
 #include <DebugConfiguration.h>
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <iomanip>
+#include <memory>
 #include <mesh-pb-constants.h>
+#include <sstream>
 #if defined(ARCH_ESP32)
 #include "../mesh/generated/meshtastic/paxcount.pb.h"
 #endif
@@ -15,6 +21,138 @@
 
 static const char *errStr = "Error decoding proto for %s message!";
 
+static std::unique_ptr<JSONValue> tryParseJson(const char *s)
+{
+    return std::unique_ptr<JSONValue>(JSON::Parse(s));
+}
+
+namespace
+{
+constexpr const char *ANSI_RESET = "\033[0m";
+constexpr const char *ANSI_BOLD = "\033[1m";
+constexpr const char *ANSI_DIM = "\033[2m";
+constexpr const char *ANSI_RED = "\033[31m";
+constexpr const char *ANSI_GREEN = "\033[32m";
+constexpr const char *ANSI_YELLOW = "\033[33m";
+constexpr const char *ANSI_BLUE = "\033[34m";
+constexpr const char *ANSI_WHITE = "\033[37m";
+constexpr const char *ANSI_BRIGHT_GREEN = "\033[92m";
+
+std::string styledText(const char *color, const std::string &text, bool styled)
+{
+    return styled ? std::string(color) + text + ANSI_RESET : text;
+}
+
+std::string safeConsoleText(std::string text, size_t maxBytes = 60)
+{
+    if (text.size() > maxBytes)
+        text.resize(maxBytes);
+    for (char &c : text) {
+        const auto byte = static_cast<unsigned char>(c);
+        if (byte < 0x20 || byte == 0x7f)
+            c = ' ';
+    }
+    return text;
+}
+
+const JSONValue *objectMember(const JSONValue *object, const char *name)
+{
+    if (!object || !object->IsObject())
+        return nullptr;
+    const JSONObject &members = object->AsObject();
+    const auto member = members.find(name);
+    return member == members.end() ? nullptr : member->second;
+}
+
+std::string stringMember(const JSONValue *object, const char *name)
+{
+    const JSONValue *value = objectMember(object, name);
+    return value && value->IsString() ? value->AsString() : "";
+}
+
+const JSONValue *numberMember(const JSONValue *object, const char *name)
+{
+    const JSONValue *value = objectMember(object, name);
+    return value && value->IsNumber() ? value : nullptr;
+}
+
+std::string packetType(const meshtastic_MeshPacket *mp, const JSONValue *json)
+{
+    if (mp->which_payload_variant != meshtastic_MeshPacket_decoded_tag)
+        return "ENCRYPTED";
+    const std::string type = stringMember(json, "type");
+    if (!type.empty()) {
+        std::string upper = type;
+        std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) { return std::toupper(c); });
+        return upper;
+    }
+    return "PORT_" + std::to_string(static_cast<unsigned>(mp->decoded.portnum));
+}
+
+std::string signalBar(int32_t rssi, bool styled)
+{
+    const float clamped = std::max(-120.0f, std::min(-50.0f, static_cast<float>(rssi)));
+    const int filled = std::max(0, std::min(10, static_cast<int>(std::lround(((clamped + 120.0f) / 70.0f) * 10.0f))));
+    const std::string full = styled ? "▓" : "#";
+    const std::string empty = styled ? "░" : ".";
+    std::string bar;
+    for (int i = 0; i < filled; ++i)
+        bar += full;
+    for (int i = filled; i < 10; ++i)
+        bar += empty;
+    const char *color = rssi > -80 ? ANSI_GREEN : (rssi > -100 ? ANSI_YELLOW : ANSI_RED);
+    return styledText(color, bar, styled);
+}
+
+std::string payloadSummary(const meshtastic_MeshPacket *mp, const JSONValue *json)
+{
+    std::ostringstream out;
+    if (mp->which_payload_variant != meshtastic_MeshPacket_decoded_tag) {
+        out << mp->encrypted.size << " bytes ch=0x" << std::hex << std::setw(2) << std::setfill('0')
+            << static_cast<unsigned>(mp->channel);
+        return out.str();
+    }
+
+    out << "port=" << static_cast<unsigned>(mp->decoded.portnum);
+    if (mp->pki_encrypted)
+        out << " pki";
+
+    const JSONValue *payload = objectMember(json, "payload");
+    const std::string type = stringMember(json, "type");
+    const JSONValue *latitude = numberMember(payload, "latitude_i");
+    const JSONValue *longitude = numberMember(payload, "longitude_i");
+    if (type == "text" && !stringMember(payload, "text").empty()) {
+        out << " \"" << safeConsoleText(stringMember(payload, "text")) << "\"";
+    } else if ((type == "position" || type == "waypoint") && latitude && longitude) {
+        out << std::fixed << std::setprecision(4) << " lat=" << latitude->AsNumber() / 1e7
+            << " lon=" << longitude->AsNumber() / 1e7;
+        const JSONValue *altitude = numberMember(payload, "altitude");
+        if (altitude)
+            out << std::setprecision(0) << " alt=" << altitude->AsNumber() << 'm';
+    } else if (type == "nodeinfo") {
+        const std::string longName = stringMember(payload, "longname");
+        const std::string name = longName.empty() ? stringMember(payload, "shortname") : longName;
+        if (!name.empty())
+            out << " \"" << safeConsoleText(name) << "\"";
+        const JSONValue *role = numberMember(payload, "role");
+        if (role)
+            out << " role=" << static_cast<unsigned>(role->AsNumber());
+    } else if (type == "telemetry") {
+        const JSONValue *battery = numberMember(payload, "battery_level");
+        const JSONValue *voltage = numberMember(payload, "voltage");
+        const JSONValue *temperature = numberMember(payload, "temperature");
+        if (battery)
+            out << " batt=" << static_cast<unsigned>(battery->AsNumber()) << '%';
+        else if (voltage)
+            out << " voltage=" << voltage->AsNumber();
+        if (temperature)
+            out << " temp=" << temperature->AsNumber() << 'C';
+    } else if (type == "detection" && !stringMember(payload, "text").empty()) {
+        out << ' ' << safeConsoleText(stringMember(payload, "text"));
+    }
+    return out.str();
+}
+} // namespace
 std::string MeshPacketSerializer::JsonSerialize(const meshtastic_MeshPacket *mp, bool shouldLog)
 {
     // the created jsonObj is immutable after creation, so
@@ -472,5 +610,45 @@ std::string MeshPacketSerializer::JsonSerializeEncrypted(const meshtastic_MeshPa
 
     delete value;
     return jsonStr;
+}
+std::string MeshPacketSerializer::ConsoleSerialize(const meshtastic_MeshPacket *mp, bool styled, const char *direction,
+                                                   bool includeSignal)
+{
+    std::unique_ptr<JSONValue> json;
+    if (mp->which_payload_variant == meshtastic_MeshPacket_decoded_tag) {
+        const std::string serialized = JsonSerialize(mp, false);
+        json = tryParseJson(serialized.c_str());
+    }
+
+    const std::string type = packetType(mp, json.get());
+    const std::string summary = payloadSummary(mp, json.get());
+    std::ostringstream out;
+    out << ' ' << styledText(ANSI_BRIGHT_GREEN, direction, styled) << ' ' << styledText(ANSI_BOLD, "PKT", styled) << "  "
+        << styledText(ANSI_BLUE, "meshtastic", styled) << "  ";
+
+    std::ostringstream route;
+    route << std::hex << std::setw(8) << std::setfill('0') << mp->from << " -> " << std::setw(8) << mp->to;
+    out << styledText(ANSI_WHITE, route.str(), styled) << "  " << styledText(ANSI_YELLOW, type, styled);
+    if (type.size() < 12)
+        out << std::string(12 - type.size(), ' ');
+    out << ' ';
+
+    const bool hasRxSignal = includeSignal && mp->rx_rssi != 0;
+    if (hasRxSignal) {
+        out << styledText(ANSI_DIM, "rssi", styled) << ' ' << std::fixed << std::setw(6) << std::setprecision(1)
+            << static_cast<double>(mp->rx_rssi) << ' ' << signalBar(mp->rx_rssi, styled) << ' ';
+    } else {
+        const std::string emptyBar = styled ? "░░░░░░░░░░" : "..........";
+        out << styledText(ANSI_DIM, "rssi", styled) << "     -- " << styledText(ANSI_DIM, emptyBar, styled) << ' ';
+    }
+
+    // rx_snr has no presence bit; a nonzero RX RSSI indicates receive metadata, where 0 dB is valid.
+    if (hasRxSignal)
+        out << styledText(ANSI_DIM, "snr", styled) << ' ' << std::fixed << std::setw(5) << std::setprecision(1) << mp->rx_snr;
+    else
+        out << styledText(ANSI_DIM, "snr", styled) << "    --";
+    if (!summary.empty())
+        out << "  " << styledText(ANSI_DIM, summary, styled);
+    return out.str();
 }
 #endif

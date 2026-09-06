@@ -8,6 +8,8 @@ class MeshPacketSerializer
   public:
     static std::string JsonSerialize(const meshtastic_MeshPacket *mp, bool shouldLog = true);
     static std::string JsonSerializeEncrypted(const meshtastic_MeshPacket *mp);
+    static std::string ConsoleSerialize(const meshtastic_MeshPacket *mp, bool styled, const char *direction = ">>",
+                                        bool includeSignal = true);
 
   private:
     static std::string bytesToHex(const uint8_t *bytes, int len)
