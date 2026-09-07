@@ -124,12 +124,14 @@ bool copyFilePath(char *dest, size_t destSize, const char *path, bool *wasLimite
         return false;
     }
 
-    if (strlcpy(dest, path, destSize) >= destSize) {
+    const size_t pathLength = strlen(path);
+    if (pathLength >= destSize) {
         if (wasLimited)
             *wasLimited = true;
         return false;
     }
 
+    memcpy(dest, path, pathLength + 1);
     return true;
 }
 
