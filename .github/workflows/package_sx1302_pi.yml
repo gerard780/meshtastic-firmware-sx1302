@@ -12,9 +12,10 @@ permissions:
   contents: write
 
 jobs:
-  build-arm64-trixie:
+  build-arm64:
     runs-on: ubuntu-24.04-arm
-    container: debian:trixie
+    container:
+      image: ${{ endsWith(github.ref_name, '-bookworm') && 'debian:bookworm' || 'debian:trixie' }}
     steps:
       - name: Install build dependencies
         run: |
@@ -40,7 +41,7 @@ jobs:
           path: |
             ~/.platformio
             .pio
-          key: sx1302-2.7.26-arm64-trixie-v1-${{ hashFiles('platformio.ini', 'variants/native/**/*.ini', 'src/**') }}
+          key: sx1302-2.7.26-arm64-${{ endsWith(github.ref_name, '-bookworm') && 'bookworm' || 'trixie' }}-v1-${{ hashFiles('platformio.ini', 'variants/native/**/*.ini', 'src/**') }}
 
       - name: Build ARM64 daemon and SX1302 HAL
         run: |
@@ -91,7 +92,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: meshtasticd-sx1302-arm64-trixie
+          name: meshtasticd-sx1302-arm64-${{ endsWith(github.ref_name, '-bookworm') && 'bookworm' || 'trixie' }}
           path: dist/*.deb
 
       - name: Publish tagged package
@@ -101,4 +102,4 @@ jobs:
           files: dist/*.deb
           prerelease: true
           name: Meshtastic SX1302 ${{ github.ref_name }}
-          body: "Prebuilt ARM64 package for Raspberry Pi OS Trixie. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
+          body: "Prebuilt ARM64 package for Raspberry Pi OS ${{ endsWith(github.ref_name, '-bookworm') && 'Bookworm' || 'Trixie' }}. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
