@@ -95,11 +95,81 @@ jobs:
           name: meshtasticd-sx1302-arm64-${{ endsWith(github.ref_name, '-bookworm') && 'bookworm' || 'trixie' }}
           path: dist/*.deb
 
-      - name: Publish tagged package
-        if: startsWith(github.ref, 'refs/tags/')
+  build-armhf-bookworm:
+    if: github.ref_name == 'backport/sx1302-v2.7.26' || endsWith(github.ref_name, '-bookworm')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up ARMv7 emulation
+        uses: docker/setup-qemu-action@v4
+
+      - name: Build ARMHF daemon, SX1302 HAL, and Debian package
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            debian:bookworm bash -s <<'BUILD'
+          set -euxo pipefail
+          apt-get update
+          apt-get install --no-install-recommends -y \
+            ca-certificates curl dpkg-dev g++ gcc git gzip make pkg-config python3-grpc-tools python3-pip wget zip \
+            libbluetooth-dev libcurl4-gnutls-dev libgpiod-dev libi2c-dev libinput-dev libjsoncpp-dev \
+            liborcania-dev libsdl2-dev libsqlite3-dev libssl-dev libulfius-dev libusb-1.0-0-dev libuv1-dev \
+            libx11-dev libxkbcommon-x11-dev libyaml-cpp-dev
+          pip install --break-system-packages --no-cache-dir platformio
+          git config --global --add safe.directory /workspace
+
+          ./bin/build-native.sh native
+          mkdir -p build/pi-package-armhf
+          ./bin/build-sx1302-hal.sh build/pi-package-armhf/libloragw.so
+
+          curl -fsSL "https://github.com/meshtastic/web/releases/download/v$(cat bin/web.version)/build.tar" \
+            -o build/pi-package-armhf/web.tar
+          mkdir -p build/pi-package-armhf/web
+          tar -xf build/pi-package-armhf/web.tar -C build/pi-package-armhf/web
+          gzip -dr build/pi-package-armhf/web
+
+          source_revision="$(git rev-parse --short=8 HEAD)"
+          package_version="$(./bin/buildinfo.py short).0+sx1302.${source_revision}"
+          meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
+          test -n "${meshtasticd_binary}"
+          PACKAGE_ARCHITECTURE=armhf PACKAGE_VERSION="${package_version}" \
+            ./bin/package-sx1302-deb.sh \
+              "${meshtasticd_binary}" \
+              build/pi-package-armhf/libloragw.so \
+              build/pi-package-armhf/web \
+              dist-armhf
+          BUILD
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meshtasticd-sx1302-armhf-bookworm
+          path: dist-armhf/*.deb
+
+  publish:
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/') &&
+      needs.build-arm64.result == 'success' &&
+      (endsWith(github.ref_name, '-trixie') || needs.build-armhf-bookworm.result == 'success')
+    needs:
+      - build-arm64
+      - build-armhf-bookworm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: meshtasticd-sx1302-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish tagged packages
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.deb
           prerelease: true
           name: Meshtastic SX1302 ${{ github.ref_name }}
-          body: "Prebuilt ARM64 package for Raspberry Pi OS ${{ endsWith(github.ref_name, '-bookworm') && 'Bookworm' || 'Trixie' }}. Install the .deb, then run: sudo meshtasticd-sx1302-setup rak|sensecap"
+          body: "Prebuilt Raspberry Pi packages for Raspberry Pi OS ${{ endsWith(github.ref_name, '-bookworm') && 'Bookworm' || 'Trixie' }}. Install the package matching your system architecture, then run: sudo meshtasticd-sx1302-setup rak|sensecap"

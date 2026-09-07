@@ -77,7 +77,7 @@ Priority: optional
 Homepage: https://github.com/gerard780/meshtastic-firmware-sx1302
 Description: Meshtastic daemon with SX1302 concentrator support
  Prebuilt Meshtastic Portduino daemon and patched Semtech SX1302 HAL for
- 64-bit Raspberry Pi OS.
+ Raspberry Pi OS.
 EOF
 
 cat >"${package_root}/DEBIAN/conffiles" <<'EOF'
