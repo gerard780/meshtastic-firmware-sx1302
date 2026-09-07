@@ -108,7 +108,7 @@ jobs:
 
       - name: Build ARMHF daemon, SX1302 HAL, and Debian package
         run: |
-          docker run --rm --platform linux/arm/v7 \
+          docker run --rm -i --platform linux/arm/v7 \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
             debian:bookworm bash -s <<'BUILD'
@@ -148,6 +148,7 @@ jobs:
         with:
           name: meshtasticd-sx1302-armhf-bookworm
           path: dist-armhf/*.deb
+          if-no-files-found: error
 
   publish:
     if: >-
