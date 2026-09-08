@@ -122,7 +122,7 @@ jobs:
           pip install --break-system-packages --no-cache-dir platformio
           git config --global --add safe.directory /workspace
 
-          ./bin/build-native.sh native
+          ./bin/build-native.sh native-armhf
           mkdir -p build/pi-package-armhf
           ./bin/build-sx1302-hal.sh build/pi-package-armhf/libloragw.so
 
@@ -133,7 +133,7 @@ jobs:
           gzip -dr build/pi-package-armhf/web
 
           source_revision="$(git rev-parse --short=8 HEAD)"
-          package_version="$(./bin/buildinfo.py short).0+sx1302.${source_revision}"
+          package_version="$(./bin/buildinfo.py short).1+sx1302.${source_revision}"
           meshtasticd_binary="$(find release -maxdepth 1 -type f -name 'meshtasticd_linux_*' -print -quit)"
           test -n "${meshtasticd_binary}"
           PACKAGE_ARCHITECTURE=armhf PACKAGE_VERSION="${package_version}" \
