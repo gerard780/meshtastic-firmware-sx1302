@@ -147,7 +147,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: meshtasticd-sx1302-armhf-bookworm
-          path: dist-armhf/*.deb
+          path: |
+            dist-armhf/*.deb
+            release/meshtasticd_linux_*
           if-no-files-found: error
 
   publish:
